@@ -99,8 +99,13 @@ def friendly_transcript_error(exc: Exception) -> str:
             "(see the README)."
         )
     if isinstance(exc, CouldNotRetrieveTranscript):
-        return "Could not retrieve the transcript for this video."
-    return f"Unexpected error while fetching the transcript: {exc}"
+        cause = getattr(exc, "cause", "") or ""
+        return (
+            "Could not retrieve the transcript for this video. This usually means the video "
+            "has no captions, is age-restricted, or YouTube is blocking this server. "
+            f"Technical detail: {type(exc).__name__}. {str(cause).strip()[:300]}"
+        )
+    return f"Unexpected error while fetching the transcript ({type(exc).__name__}): {str(exc)[:300]}"
 
 
 def ask_gemini(client, model: str, system: str, prompt: str) -> str:
