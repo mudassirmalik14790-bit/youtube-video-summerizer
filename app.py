@@ -95,8 +95,8 @@ def friendly_transcript_error(exc: Exception) -> str:
     if isinstance(exc, (IpBlocked, RequestBlocked)):
         return (
             "YouTube is blocking requests from this server's IP address. This is common on "
-            "cloud hosts. Try again later, run the app locally, or set a proxy "
-            "(see the README)."
+            "cloud hosts. Switch to 'Paste transcript' above to use the app without a link, "
+            "or run the app locally (see the README)."
         )
     if isinstance(exc, CouldNotRetrieveTranscript):
         cause = getattr(exc, "cause", "") or ""
@@ -122,7 +122,8 @@ def ask_gemini(client, model: str, system: str, prompt: str) -> str:
 
 SYSTEM_PROMPT = (
     "You are an expert at summarizing YouTube videos from their transcripts. "
-    "Transcript lines start with a [timestamp]. Only use information from the transcript. "
+    "Transcript lines may start with a [timestamp]. Cite timestamps only if the transcript has them; "
+    "never invent timestamps. Only use information from the transcript. "
     "If the transcript is auto-generated, tolerate small transcription errors. "
     "Always answer in English."
 )
@@ -135,9 +136,9 @@ Use this structure in Markdown:
 ## TL;DR
 2-3 sentences.
 ## Key points
-Bullets, each starting with its timestamp like **[05:32]**.
+Bullets. If the transcript has timestamps, start each with its timestamp like **[05:32]**.
 ## Chapters
-A list of "timestamp - chapter title" covering the whole video.
+A list of "timestamp - chapter title" covering the whole video (just chapter titles in order if there are no timestamps).
 ## Takeaways
 The most important things a viewer should remember.
 
@@ -172,29 +173,51 @@ proxy_url = get_secret("YT_PROXY_URL")
 
 # ---------- Main UI ----------
 st.title("🎬 YouTube Video Summarizer")
-st.write("Paste a YouTube link to get a summary with timestamps, then ask questions about the video.")
+st.write("Get a summary with key points and chapters from a YouTube video, then ask questions about it.")
 
-url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
+mode = st.radio("Input method", ["YouTube link", "Paste transcript"], horizontal=True)
+
+if mode == "YouTube link":
+    url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
+    pasted = ""
+else:
+    url = st.text_input("YouTube URL (optional, shows the video)", placeholder="https://www.youtube.com/watch?v=...")
+    pasted = st.text_area(
+        "Transcript",
+        height=220,
+        placeholder="Paste the transcript here...",
+        help="On YouTube: open the video, click '...more' under the title, then 'Show transcript'. "
+        "Select all the text and copy it.",
+    )
 
 if st.button("Summarize", type="primary"):
     if not api_key:
         st.error("Please enter your Gemini API key in the sidebar.")
         st.stop()
-    video_id = extract_video_id(url) if url else None
-    if not video_id:
-        st.error("That doesn't look like a valid YouTube link.")
-        st.stop()
 
-    try:
-        with st.spinner("Fetching transcript..."):
-            transcript, language = fetch_transcript(video_id, proxy_url)
-    except Exception as exc:  # library raises many specific errors
-        st.error(friendly_transcript_error(exc))
-        st.stop()
+    video_id = extract_video_id(url) if url else None
+
+    if mode == "YouTube link":
+        if not video_id:
+            st.error("That doesn't look like a valid YouTube link.")
+            st.stop()
+        try:
+            with st.spinner("Fetching transcript..."):
+                transcript, language = fetch_transcript(video_id, proxy_url)
+        except Exception as exc:  # library raises many specific errors
+            st.error(friendly_transcript_error(exc))
+            st.stop()
+    else:
+        transcript, language = pasted.strip(), "pasted by you"
+        if len(transcript) < 50:
+            st.error("Please paste a longer transcript (at least a few sentences).")
+            st.stop()
+        if url and not video_id:
+            st.warning("The URL wasn't recognised, so the video won't be shown. Summarizing the transcript anyway.")
 
     if len(transcript) > MAX_TRANSCRIPT_CHARS:
         transcript = transcript[:MAX_TRANSCRIPT_CHARS]
-        st.warning("This video is very long, so only the first part of the transcript was used.")
+        st.warning("This transcript is very long, so only the first part was used.")
 
     try:
         client = genai.Client(api_key=api_key)
@@ -212,7 +235,8 @@ if st.button("Summarize", type="primary"):
 if "summary" in st.session_state:
     left, right = st.columns([1, 1.4])
     with left:
-        st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
+        if st.session_state["video_id"]:
+            st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
         st.caption(f"Transcript language: {st.session_state['language']}")
         with st.expander("Show full transcript"):
             st.text(st.session_state["transcript"])
@@ -221,7 +245,7 @@ if "summary" in st.session_state:
         st.download_button(
             "Download summary (.md)",
             st.session_state["summary"],
-            file_name=f"summary_{st.session_state['video_id']}.md",
+            file_name=f"summary_{st.session_state['video_id'] or 'transcript'}.md",
             mime="text/markdown",
         )
 
