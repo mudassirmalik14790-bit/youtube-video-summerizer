@@ -7,6 +7,7 @@ Then ask follow-up questions about the video. Built with **Streamlit** and a **G
 - Works with watch, youtu.be, Shorts, embed and live links
 - Three summary styles: Detailed, Concise, Study notes
 - Timestamped key points and chapters
+- Two input modes: paste a YouTube link, or paste the transcript text yourself
 - Chat box to ask questions about the video
 - Download the summary as Markdown
 
@@ -34,8 +35,10 @@ GEMINI_API_KEY = "your-key-here"
 
 ## Known limitation: YouTube blocking cloud IPs
 YouTube often blocks transcript requests from cloud servers such as Streamlit Cloud.
-If you see a "blocking requests" error after deploying, either run the app locally, or add a
-proxy in your secrets:
+If you see a "blocking requests" error on the deployed app, switch to **Paste transcript**:
+on YouTube click "...more" under the video, then "Show transcript", copy the text and paste it
+into the app. Running the app locally also works with links, since home connections are rarely blocked.
+You can also add a proxy in your secrets:
 ```toml
 YT_PROXY_URL = "http://user:password@proxy-host:port"
 ```
